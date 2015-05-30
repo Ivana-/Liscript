@@ -284,6 +284,7 @@ main = do
 
     loadfile globalframe "lib.txt"
     loadfile globalframe "test.txt"
+    loadfile globalframe "test1.txt"
 
     endT <- getCurrentTime
     putStrLn $ "Elapced time: " ++ show (diffUTCTime endT begT)
