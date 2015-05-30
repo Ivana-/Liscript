@@ -1,0 +1,68 @@
+(def nil '())
+(defn null? (l) (eq? (car l) nil))
+
+(defn list-from-to (a b)
+    (defn go (i) (cond (<= i b) (cons i (go (+ i 1))) True nil))
+    (go a))
+
+(defn length (l) (cond (null? l) 0 (+ 1 (length (cdr l)))))
+(defn append (l1 l2) (cond (null? l1) l2 (cons (car l1) (append (cdr l1) l2))))
+
+(defn take (n l)
+    (cond (null? l) nil
+          (> n 0) (cons (car l) (take (- n 1) (cdr l)))
+          nil))
+
+(defn drop (n l)
+    (cond (null? l) nil
+          (> n 0) (drop (- n 1) (cdr l))
+          l))
+
+(defn foldl (f a l)
+    (cond (null? l) a
+          (foldl f (f (car l) a) (cdr l))))
+
+(defn foldr (f a l)
+    (cond (null? l) a
+          (f (car l) (foldr f a (cdr l)))))
+
+(defn reverse (l) (foldl cons nil l))
+(defn elem   (x l) (cond (null? l) False (eq? x (car l)) True (elem x (cdr l))))
+(defn noelem (x l) (cond (null? l) True (eq? x (car l)) False (noelem x (cdr l))))
+
+(defn filter (f l)
+    (defn go (a l)
+        (cond (null? l) a
+              (f (car l)) (cons (car l) (go a (cdr l)))
+              (go a (cdr l))))
+    (go nil l))
+
+(defn map (f l) (cond (null? l) nil (cons (f (car l)) (map f (cdr l)))))
+
+(defn mapa (f l)
+    (cond (atom? l) (f l)
+          (null? l) nil
+          (cons (mapa f (car l)) (mapa f (cdr l)))))
+
+(defn tolist (x) (cond (list? x) x (cons x nil)))
+(defn inl (x) (cons x nil))
+(defn ntimes (n f x) (cond (= n 0) x (ntimes (- n 1) f (f x))))
+(defn inln (n x) (ntimes n inl x))
+
+(defn flatten (l)
+    (defn go (r l)
+        (cond (atom? l) l
+              (null? l) nil
+              (append (tolist (go r (car l))) (tolist (go r (cdr l))))))
+    (go nil l))
+
+--(defn nub (l) (
+    (defn go (r l)
+        (cond (null? l) r
+              (go (cond (elem (car l) r) r (cons (car l) r)) (cdr l))))
+    (go nil l)))
+
+--(defn concat (l) (cond (null? l) nil
+    (append (tolist (car l)) (concat (cdr l)))))
+
+("Ok, module loaded: listlib 1.0")
