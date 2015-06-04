@@ -1,4 +1,25 @@
 (printLn "")
+(printLn "ЗАДАЧА - функция, выдяющая список персон по фамилии:")
+(defn Person (name surname address)
+    (lambda (p)
+        (cond (eq? "getname" p) name
+              (eq? "getsurname" p) surname
+              (eq? "getinfo" p) (str "name:" name "surname:" surname "address:" address)
+              (print (str "Неизвестное имя метода:" p)))))
+(defn find-by-field (f v l) (filter (lambda (p) (eq? v (p f))) l))
+(defn show-person-list (l) (map (lambda (p) (p "getinfo")) l))
+
+(def l (map eval '(
+    (Person "Ivan" "Ivanov" "Moscow, Tverskaya 14")
+    (Person "Anton" "Smirnov" "Omsk, Dunaeva 21")
+    (Person "Andrew" "Ivanov" "Воронеж, Лизюкова 49/5")
+    )))
+(printLn (show-person-list l))
+(printLn (show-person-list (find-by-field "getsurname" "Ivanov" l)))
+(printLn (show-person-list (find-by-field "getsurname" "Smirnov" l)))
+(printLn (show-person-list (find-by-field "getsurname" "Petrov" l)))
+
+(printLn "")
 (printLn "ЗАДАЧА - функция, вычисляющая число Фибоначчи экспоненциальным алгоритмом:")
 (defn fib (n)
     (defn fib-iter (a b p q count)

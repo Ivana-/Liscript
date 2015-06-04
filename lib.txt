@@ -1,5 +1,6 @@
 (def nil '())
-(defn null? (l) (eq? (car l) nil))
+--(defn null? (l) (eq? l nil))
+(def null? (macro (l) (eq? l nil)))
 
 (defn list-from-to (a b)
     (defn go (i) (cond (<= i b) (cons i (go (+ i 1))) True nil))
@@ -26,9 +27,15 @@
     (cond (null? l) a
           (f (car l) (foldr f a (cdr l)))))
 
+(defn unfold (a p f) (cond (p a) nil (cons a (unfold (f a) p f))))
+
 (defn reverse (l) (foldl cons nil l))
 (defn elem   (x l) (cond (null? l) False (eq? x (car l)) True (elem x (cdr l))))
 (defn noelem (x l) (cond (null? l) True (eq? x (car l)) False (noelem x (cdr l))))
+
+(defn zipwith (f l1 l2)
+    (cond (null? l1) nil (null? l2) nil
+          (cons (f (car l1) (car l2)) (zipwith f (cdr l1) (cdr l2)))))
 
 (defn filter (f l)
     (defn go (a l)
@@ -38,6 +45,11 @@
     (go nil l))
 
 (defn map (f l) (cond (null? l) nil (cons (f (car l)) (map f (cdr l)))))
+
+(defn nub (l) (cond (null? l) nil
+    (cond (elem (car l) (cdr l)) (nub (cdr l)) (cons (car l) (nub (cdr l))))))
+
+(defn concat (l) (cond (null? l) nil (append (car l) (concat (cdr l)))))
 
 (defn mapa (f l)
     (cond (atom? l) (f l)
@@ -55,14 +67,5 @@
               (null? l) nil
               (append (tolist (go r (car l))) (tolist (go r (cdr l))))))
     (go nil l))
-
---(defn nub (l) (
-    (defn go (r l)
-        (cond (null? l) r
-              (go (cond (elem (car l) r) r (cons (car l) r)) (cdr l))))
-    (go nil l)))
-
---(defn concat (l) (cond (null? l) nil
-    (append (tolist (car l)) (concat (cdr l)))))
 
 ("Ok, module loaded: listlib 1.0")
