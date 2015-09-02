@@ -5,6 +5,7 @@
 (defn list-from-to (a b)
     (defn go (i) (cond (<= i b) (cons i (go (+ i 1))) True nil))
     (go a))
+(defn list-ref (n l) (cond (= 0 n) (car l) (list-ref (- n 1) (cdr l))))
 
 (defn length (l) (cond (null? l) 0 (+ 1 (length (cdr l)))))
 (defn append (l1 l2) (cond (null? l1) l2 (cons (car l1) (append (cdr l1) l2))))
@@ -33,6 +34,16 @@
 (defn elem   (x l) (cond (null? l) False (eq? x (car l)) True (elem x (cdr l))))
 (defn noelem (x l) (cond (null? l) True (eq? x (car l)) False (noelem x (cdr l))))
 
+(defn any (f l) (cond (null? l) False (f (car l)) True (any f (cdr l))))
+(defn all (f l) (cond (null? l) True (f (car l)) (all f (cdr l)) False))
+
+(defn span (f l)
+    (defn go (l1 l2)
+        (cond (null? l2)   (cons (reverse l1) (cons l2 nil))
+              (f (car l2)) (cons (reverse l1) (cons l2 nil))
+                           (go (cons (car l2) l1) (cdr l2))))
+    (go nil l))
+
 (defn zipwith (f l1 l2)
     (cond (null? l1) nil (null? l2) nil
           (cons (f (car l1) (car l2)) (zipwith f (cdr l1) (cdr l2)))))
@@ -60,6 +71,7 @@
 (defn inl (x) (cons x nil))
 (defn ntimes (n f x) (cond (= n 0) x (ntimes (- n 1) f (f x))))
 (defn inln (n x) (ntimes n inl x))
+(defn not (x) (cond x False True))
 
 (defn flatten (l)
     (defn go (r l)

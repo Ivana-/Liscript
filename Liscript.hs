@@ -102,6 +102,11 @@ eval env (List l) = do
     op <- eval env $ head l
     let ls = tail l
 
+        foldString op = do
+            evls <- mapM (eval env) ls
+            let l = map fromAtom evls
+            return $ Atom $ show $ foldl1 op l
+
         foldInteger op = do
             evls <- mapM (eval env) ls
             let l = map ((\s -> read s::Integer) . fromAtom) evls
@@ -123,6 +128,8 @@ eval env (List l) = do
             return $ Atom $ show $ op a b
 
     case op of
+
+        Atom "++" -> foldString (++)
 
         Atom "+" -> foldInteger (+)
         Atom "-" -> foldInteger (-)
@@ -183,6 +190,15 @@ eval env (List l) = do
                 cond [e] = eval env e
             cond ls
 
+        Atom "while" -> do
+            let while px@(p:xx) = do
+                    evp <- eval env p
+                    if (\s -> read s::Bool) . fromAtom $ evp then do
+                        _ <- eval env $ List xx
+                        while px
+                    else return $ Atom ""
+            while ls
+
         Atom "printLn" -> do
             value <- eval env $ head ls
             putStrLn $ show value
@@ -194,18 +210,37 @@ eval env (List l) = do
             return $ Atom ""
 
         Atom "set!" -> do
+--            name  <- eval env $ head ls
             value <- eval env $ last ls
             setVar env (fromAtom . head $ ls) value
+--            setVar env (fromAtom name) value
+            return $ Atom ""
+
+        Atom "name-set!" -> do
+            name  <- eval env $ head ls
+            value <- eval env $ last ls
+--            setVar env (fromAtom . head $ ls) value
+            setVar env (fromAtom name) value
             return $ Atom ""
 
         Atom "def" -> do
+--            name  <- eval env $ head ls
             value <- eval env $ last ls
             defVar env (fromAtom . head $ ls) value
+--            defVar env (fromAtom name) value
+            return $ Atom ""
+
+        Atom "name-def" -> do
+            name  <- eval env $ head ls
+            value <- eval env $ last ls
+            defVar env (fromAtom name) value
             return $ Atom ""
 
         Atom "defn" -> do
+--            name  <- eval env $ head ls
             value <- eval env $ List $ (Atom "lambda") : tail ls
             defVar env (fromAtom . head $ ls) value
+--            defVar env (fromAtom name) value
             return $ Atom ""
 
         Atom "lambda" -> do
@@ -283,12 +318,15 @@ main = do
     let globalframe = Voc (refglobalframe, NullEnv)
 
     loadfile globalframe "lib.txt"
-    loadfile globalframe "test.txt"
-    loadfile globalframe "test1.txt"
+--    loadfile globalframe "test.txt"
+--    loadfile globalframe "test1.txt"
 --    loadfile globalframe "test2.txt"
+    loadfile globalframe "test3.txt"
 
     endT <- getCurrentTime
     putStrLn $ "Elapced time: " ++ show (diffUTCTime endT begT)
+    --_ <- getLine
+    --putStr ""
 
 
 -- дополнительные необязательные функции
