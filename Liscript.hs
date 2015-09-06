@@ -1,9 +1,10 @@
-module Liscript where
+--module Liscript where
 
 import qualified Data.Map.Strict as Map
 import Data.IORef
 import System.IO
 import Data.Time
+import GHC.IO.Encoding --(setLocaleEncoding, utf8)
 
 
 ------------------------ ТИП LispVal И ЕГО ИНСТАНСЫ ---------------------
@@ -26,9 +27,14 @@ showVal (Macr {params = args, body = body}) = "(MACRO "
     ++ unwords (map show args)  ++ " (" ++ unwords (map showVal body) ++ "))"
 
 eqVal :: LispVal -> LispVal -> Bool
-eqVal (Atom a)  (Atom b)  = a==b
-eqVal (List []) (List []) = True -- тут конечно надо сравнить поэлементно
-eqVal _         _         = False
+eqVal (Atom a) (Atom b) = a == b
+eqVal (List [])     (List [])     = True
+eqVal (List (a:_))  (List [])     = False
+eqVal (List [])     (List (b:_))  = False
+eqVal (List (a:as)) (List (b:bs)) = eqVal a b && eqVal (List as) (List bs)
+eqVal (Macr {params = a1, body = b1}) (Macr {params = a2, body = b2}) =
+    a1 == a2 && eqVal (List b1) (List b2)
+eqVal _  _ = False
 
 
 ------------------------------- ОКРУЖЕНИЕ -------------------------------
@@ -96,34 +102,34 @@ macroexpand varval body = go body where
 ------------------------------- ЭВАЛ -------------------------------
 
 
-eval :: Env -> LispVal -> IO LispVal
-eval env (Atom s) = getVar env s
-eval env (List l) = do
-    op <- eval env $ head l
+eval :: Handle -> Env -> LispVal -> IO LispVal
+eval hFile env (Atom s) = getVar env s
+eval hFile env (List l) = do
+    op <- eval hFile env $ head l
     let ls = tail l
 
         foldString op = do
-            evls <- mapM (eval env) ls
+            evls <- mapM (eval hFile env) ls
             let l = map fromAtom evls
             return $ Atom $ show $ foldl1 op l
 
         foldInteger op = do
-            evls <- mapM (eval env) ls
+            evls <- mapM (eval hFile env) ls
             let l = map ((\s -> read s::Integer) . fromAtom) evls
             return $ Atom $ show $ foldl1 op l
 
         foldDouble op = do
-            evls <- mapM (eval env) ls
+            evls <- mapM (eval hFile env) ls
             let l = map ((\s -> read s::Double) . fromAtom) evls
             return $ Atom $ show $ foldl1 op l
 
         compareInteger op = do
-            evls <- mapM (eval env) $ take 2 ls
+            evls <- mapM (eval hFile env) $ take 2 ls
             let [a,b] = map ((\s -> read s::Integer) . fromAtom) evls
             return $ Atom $ show $ op a b
 
         compareDouble op = do
-            evls <- mapM (eval env) $ take 2 ls
+            evls <- mapM (eval hFile env) $ take 2 ls
             let [a,b] = map ((\s -> read s::Double) . fromAtom) evls
             return $ Atom $ show $ op a b
 
@@ -157,88 +163,92 @@ eval env (List l) = do
         Atom "/='" -> compareDouble (/=)
 
         Atom "atom?" -> do
-            value <- eval env $ head ls
+            value <- eval hFile env $ head ls
             let go (Atom _) = Atom "True"
                 go _        = Atom "False"
             return $ go value
 
         Atom "list?" -> do
-            value <- eval env $ head ls
+            value <- eval hFile env $ head ls
             let go (List _) = Atom "True"
                 go _        = Atom "False"
             return $ go value
 
         Atom "eq?" -> do
-            [a,b] <- mapM (eval env) $ take 2 ls
+            [a,b] <- mapM (eval hFile env) $ take 2 ls
             return $ Atom . show $ (==) a b
 
         Atom "quote" -> return $ head ls
 
         Atom "eval" -> do
-            value <- eval env $ head ls
-            eval env value
+            value <- eval hFile env $ head ls
+            eval hFile env value
 
         Atom "str" -> do
-            evls <- mapM (eval env) ls
+            evls <- mapM (eval hFile env) ls
             return $ List evls
+
+        Atom "strTolist" -> do
+            --evls <- mapM (eval hFile env) ls
+            return . List . map (Atom.(:"")) . concatMap fromAtom =<< mapM (eval hFile env) ls
 
         Atom "cond" -> do
             let cond (p:e:xx) = do
-                    evp <- eval env p
+                    evp <- eval hFile env p
                     if (\s -> read s::Bool) . fromAtom $ evp
-                        then eval env e else cond xx
-                cond [e] = eval env e
+                        then eval hFile env e else cond xx
+                cond [e] = eval hFile env e
             cond ls
 
         Atom "while" -> do
             let while px@(p:xx) = do
-                    evp <- eval env p
+                    evp <- eval hFile env p
                     if (\s -> read s::Bool) . fromAtom $ evp then do
-                        _ <- eval env $ List xx
+                        _ <- eval hFile env $ List xx
                         while px
                     else return $ Atom ""
             while ls
 
         Atom "printLn" -> do
-            value <- eval env $ head ls
-            putStrLn $ show value
+            value <- eval hFile env $ head ls
+            if printToFile then hPutStrLn hFile (show value) else putStrLn (show value)
             return $ Atom ""
 
         Atom "print" -> do
-            value <- eval env $ head ls
-            putStr $ show value
+            value <- eval hFile env $ head ls
+            if printToFile then hPutStr hFile (show value) else putStr (show value)
             return $ Atom ""
 
         Atom "set!" -> do
---            name  <- eval env $ head ls
-            value <- eval env $ last ls
+--            name  <- eval hFile env $ head ls
+            value <- eval hFile env $ last ls
             setVar env (fromAtom . head $ ls) value
 --            setVar env (fromAtom name) value
             return $ Atom ""
 
         Atom "name-set!" -> do
-            name  <- eval env $ head ls
-            value <- eval env $ last ls
+            name  <- eval hFile env $ head ls
+            value <- eval hFile env $ last ls
 --            setVar env (fromAtom . head $ ls) value
             setVar env (fromAtom name) value
             return $ Atom ""
 
         Atom "def" -> do
---            name  <- eval env $ head ls
-            value <- eval env $ last ls
+--            name  <- eval hFile env $ head ls
+            value <- eval hFile env $ last ls
             defVar env (fromAtom . head $ ls) value
 --            defVar env (fromAtom name) value
             return $ Atom ""
 
         Atom "name-def" -> do
-            name  <- eval env $ head ls
-            value <- eval env $ last ls
+            name  <- eval hFile env $ head ls
+            value <- eval hFile env $ last ls
             defVar env (fromAtom name) value
             return $ Atom ""
 
         Atom "defn" -> do
---            name  <- eval env $ head ls
-            value <- eval env $ List $ (Atom "lambda") : tail ls
+--            name  <- eval hFile env $ head ls
+            value <- eval hFile env $ List $ (Atom "lambda") : tail ls
             defVar env (fromAtom . head $ ls) value
 --            defVar env (fromAtom name) value
             return $ Atom ""
@@ -262,40 +272,40 @@ eval env (List l) = do
             return Macr { params = args, body = macrobody }
 
         Atom "cons" -> do
-            evls <- mapM (eval env) ls
+            evls <- mapM (eval hFile env) ls
             let cons x (List l)  = List (x:l)
 --                cons x (Atom  s) = List (x:(Atom s):[])
                 cons x y = List (x:y:[])
             return $ cons (evls!!0) (evls!!1)
 
         Atom "car" -> do
-            value <- eval env $ head ls
+            value <- eval hFile env $ head ls
             let car (List l)  = if null l then List [] else head l
                 car (Atom  s) = Atom ""
             return $ car value
 
         Atom "cdr" -> do
-            value <- eval env $ head ls
+            value <- eval hFile env $ head ls
             let cdr (List l)  = if null l then List [] else List (tail l)
                 cdr (Atom  s) = Atom ""
             return $ cdr value
 
         Func {params = args, body = foobody, closure = envfun} -> do
-            evls <- mapM (eval env) ls
+            evls <- mapM (eval hFile env) ls
             reflocalframe <- newIORef $ Map.fromList $ zip args evls
             let envloc = Voc (reflocalframe, envfun)
-            eval envloc $ List foobody
+            eval hFile envloc $ List foobody
 
         Macr {params = args, body = macrobody} -> do
             let body' = foldr macroexpand (List macrobody) $ zip args ls
 --            print body'
-            eval env $ body'
+            eval hFile env $ body'
 
         _ -> do
             let go []  = return op
-                go [x] = eval env x
+                go [x] = eval hFile env x
                 go (x:xs) = do
-                    eval env x
+                    eval hFile env x
                     go xs
             go ls
 
@@ -303,25 +313,40 @@ eval env (List l) = do
 ------------------------------- МЭЙН -------------------------------
 
 
-loadfile env filename = do
+loadfile hFile env filename = do
     handle   <- openFile filename ReadMode
+
+    hSetEncoding handle utf8
+
     contents <- hGetContents handle
-    res      <- eval env . str2LV . prepare $ contents
+    res      <- eval hFile env . str2LV . prepare $ contents
     print res
     hClose handle
     return res
 
+printToFile = False --True
+
 main = do
+
+    setLocaleEncoding utf8
+
     begT <- getCurrentTime
 
     refglobalframe <- newIORef $ Map.empty
     let globalframe = Voc (refglobalframe, NullEnv)
 
-    loadfile globalframe "lib.txt"
---    loadfile globalframe "test.txt"
---    loadfile globalframe "test1.txt"
---    loadfile globalframe "test2.txt"
-    loadfile globalframe "test3.txt"
+    hOutFile <- openFile "rezult_Liscript.txt" WriteMode
+
+    loadfile hOutFile globalframe "lib.txt"
+--    loadfile hOutFile globalframe "test.txt"
+--    loadfile hOutFile globalframe "test1.txt"
+--    loadfile hOutFile globalframe "test2.txt"
+    loadfile hOutFile globalframe "test3.txt"
+--    loadfile hOutFile globalframe "solveWK.txt"
+--    loadfile hOutFile globalframe "testWKsmall.txt"
+--    loadfile hOutFile globalframe "testWK.txt"
+
+    hClose hOutFile
 
     endT <- getCurrentTime
     putStrLn $ "Elapced time: " ++ show (diffUTCTime endT begT)

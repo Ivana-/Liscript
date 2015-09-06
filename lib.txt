@@ -44,6 +44,8 @@
                            (go (cons (car l2) l1) (cdr l2))))
     (go nil l))
 
+(defn chunks-of (n l) (cond (null? l) nil (cons (take n l) (chunks-of n (drop n l))) ))
+
 (defn zipwith (f l1 l2)
     (cond (null? l1) nil (null? l2) nil
           (cons (f (car l1) (car l2)) (zipwith f (cdr l1) (cdr l2)))))
@@ -72,6 +74,7 @@
 (defn ntimes (n f x) (cond (= n 0) x (ntimes (- n 1) f (f x))))
 (defn inln (n x) (ntimes n inl x))
 (defn not (x) (cond x False True))
+(defn and (x y) (cond x (cond y True False) False))
 
 (defn flatten (l)
     (defn go (r l)
