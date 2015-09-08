@@ -6,17 +6,17 @@
         (cond (already-run?) result
               (begin (set! result (proc)) (set! already-run? True) result))))
 
---(def memo-proc (macro (proc)
+--(defmacro memo-proc (proc)
     (def already-run? False) (def result False)
     (lambda ()
         (cond (already-run?) result
-              (begin (set! result (proc)) (set! already-run? True) result)))))
+              (begin (set! result (proc)) (set! already-run? True) result))))
 
 -- макрос отложенных вычислений, возвращает нульарную лямбду
 -- НЕ мемоизированный delay
-(def delay (macro (expr) (lambda () expr)))
+(defmacro delay (expr) (lambda () expr))
 -- мемоизированный delay
---(def delay (macro (expr) (memo-proc (lambda () expr))))
+--(defmacro delay (expr) (memo-proc (lambda () expr)))
 
 -- функция их возобновления, удачное сочетание скобок:
 -- если передадим нульарную лямбду - вычислит ее,
@@ -29,7 +29,7 @@
 (print "вычислили результат: ") (printLn (force a))
 
 -- макрос-конструктор потока, чтобы delay каждый раз не писать
-(def s-cons (macro (x y) (cons x (delay y))))
+(defmacro s-cons (x y) (cons x (delay y)))
 -- функция берет хвост потока - если функция, то вычисляет ее,
 -- воспринимая, как порождающую поток. Плохо, функции в поток не засунешь.
 (defn s-tail (stream)

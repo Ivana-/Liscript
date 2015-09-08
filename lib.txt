@@ -1,6 +1,12 @@
+--страшные макросы - defmacro и defn через него уже
+(def defmacro (macro (name args body) (def name (macro args body))))
+--(def defn (macro (name args body) (def name (lambda args body))))
+(defmacro defn (name args body) (def name (lambda args body)))
+
 (def nil '())
 --(defn null? (l) (eq? l nil))
-(def null? (macro (l) (eq? l nil)))
+--(def null? (macro (l) (eq? l nil)))
+(defmacro null? (l) (eq? l nil))
 
 (defn list-from-to (a b)
     (defn go (i) (cond (<= i b) (cons i (go (+ i 1))) True nil))

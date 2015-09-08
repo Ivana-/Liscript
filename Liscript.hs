@@ -1,7 +1,8 @@
 --module Liscript where
 
-import qualified Data.Map.Strict as Map
+import Data.Maybe (fromMaybe)
 import Control.Monad
+import qualified Data.Map.Strict as Map
 import Data.IORef
 import System.IO
 import Data.Time
@@ -51,13 +52,11 @@ setVar (Voc (refframe, parenv)) var value = do
     else setVar parenv var value
 
 getVar NullEnv                  var = return $ Atom var
-getVar (Voc (refframe, parenv)) var = do
-    frame <- readIORef refframe
-    maybe (getVar parenv var) return $ Map.lookup var frame
+getVar (Voc (refframe, parenv)) var = readIORef refframe >>=
+    maybe (getVar parenv var) return . Map.lookup var
 
 defVar NullEnv                  _   value = return ()
-defVar (Voc (refframe, parenv)) var value = do
-    modifyIORef' refframe $ Map.insert var value
+defVar (Voc (refframe, parenv)) var value = modifyIORef' refframe $ Map.insert var value
 
 
 ------------------------------- ПАРСЕР -------------------------------
@@ -78,7 +77,7 @@ str2LV :: String -> LispVal
 str2LV = go . mytokens where
     go [t] | fst == '(' && lst == ')' = List . map str2LV . mytokens $ mid
            | fst == '"' && lst == '"' = Atom mid
-           | fst == '\'' = List $ (Atom "quote") : [str2LV $ tail t]
+           | fst == '\'' = List $ Atom "quote" : [str2LV $ tail t]
            | otherwise = Atom t
         where fst = head t
               lst = last t
@@ -92,10 +91,9 @@ prepare = id -- можно написать замену "(" на " (" и т.п.
 ------------------------------ МАКРОСЫ -----------------------------
 
 
-macroexpand :: (String, LispVal) -> LispVal -> LispVal
-macroexpand varval body = go body where
-    (var, val) = varval
-    go (Atom a) | a==var = val | otherwise = (Atom a)
+macroexpand :: [(String, LispVal)] -> LispVal -> LispVal
+macroexpand kv = go where
+    go (Atom a) = fromMaybe (Atom a) $ lookup a kv
     go (List l) = List $ map go l
     go        x = x
 
@@ -111,6 +109,11 @@ eval hFile env (List l) = do
 
         listOrVal [v] = v
         listOrVal  l  = List l
+
+        zipArgsVals []      _ = []
+        zipArgsVals  _     [] = []
+        zipArgsVals [a]     b = [(a, listOrVal b)]
+        zipArgsVals (a:as) (b:bs) = (a, b) : zipArgsVals as bs
 
         evls = mapM (eval hFile env) ls
 
@@ -129,8 +132,8 @@ eval hFile env (List l) = do
         Atom "+" -> foldOp (+) str2Int
         Atom "-" -> foldOp (-) str2Int
         Atom "*" -> foldOp (*) str2Int
-        Atom "/" -> foldOp (div) str2Int
-        Atom "mod" -> foldOp (mod) str2Int
+        Atom "/" -> foldOp div str2Int
+        Atom "mod" -> foldOp mod str2Int
 
         Atom "+'" -> foldOp (+) str2Dou
         Atom "-'" -> foldOp (-) str2Dou
@@ -171,11 +174,11 @@ eval hFile env (List l) = do
             while px@(p:xx) = eval hFile env p >>= \p -> if (read $ fromAtom p)
                 then eval hFile env (List xx) >> while px else return $ Atom ""
 
-        Atom "printLn" -> evls >>= mapM (if printToFile then hPutStrLn hFile else putStrLn)
-            . map show >> return (Atom "")
+        Atom "printLn" -> evls >>=
+            mapM_ ((if printToFile then hPutStrLn hFile else putStrLn) . show) >> return (Atom "")
 
-        Atom "print" -> evls >>= mapM (if printToFile then hPutStr hFile else putStr)
-            . map show >> return (Atom "")
+        Atom "print" -> evls >>=
+            mapM_ ((if printToFile then hPutStr hFile else putStr) . show) >> return (Atom "")
 
         Atom "def" -> go ls where
             go (n:e:xx) = eval hFile env e >>= defVar env (fromAtom n) >> go xx
@@ -193,12 +196,12 @@ eval hFile env (List l) = do
             go (n:v:xx) = setVar env (fromAtom n) v >> go xx
             go _ = return $ Atom ""
 
-        Atom "defn" -> eval hFile env (List $ (Atom "lambda") : tail ls) >>=
-            defVar env (fromAtom . head $ ls) >> return (Atom "")
+--        Atom "defn" -> eval hFile env (List $ (Atom "lambda") : tail ls) >>=
+--            defVar env (fromAtom . head $ ls) >> return (Atom "")
 
         Atom "cons" -> evls >>= return . foldr1 cons where
             cons x (List l) = List (x:l)
-            cons x y        = List (x:y:[])
+            cons x y        = List [x,y]
 
         Atom "car" -> eval hFile env (head ls) >>= return . car where
             car (List l) = if null l then List [] else head l
@@ -224,11 +227,11 @@ eval hFile env (List l) = do
                 gettype (Macr { params = _, body = _ }) = "macr?"
 
         Func {params = args, body = foobody, closure = envfun} -> do
-            reflocalframe <- evls >>= newIORef . Map.fromList . zip args
+            reflocalframe <- evls >>= newIORef . Map.fromList . zipArgsVals args
             eval hFile (Voc (reflocalframe, envfun)) $ List foobody
 
         Macr {params = args, body = macrobody} -> eval hFile env
-            . foldr macroexpand (List macrobody) $ zip args ls
+                . macroexpand (zipArgsVals args ls) $ List macrobody
 
         _ -> go ls where
             go []     = return op
@@ -254,7 +257,7 @@ main = do
     setLocaleEncoding utf8
     begT <- getCurrentTime
 
-    refglobalframe <- newIORef $ Map.empty
+    refglobalframe <- newIORef Map.empty
     let globalframe = Voc (refglobalframe, NullEnv)
 
     hOutFile <- openFile "rezult_Liscript.txt" WriteMode
