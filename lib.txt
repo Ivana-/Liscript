@@ -89,4 +89,11 @@
               (append (tolist (go r (car l))) (tolist (go r (cdr l))))))
     (go nil l))
 
+(defn mapcar (args)
+    (def f (car args) ls (cdr args))
+    (defn go (ls)
+        (def cars (map car ls) cdrs (map cdr ls))
+        (cond (elem nil cars) nil (cons (eval (cons 'f cars)) (go cdrs))))
+    (go ls))
+
 ("Ok, module loaded: listlib 1.0")

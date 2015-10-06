@@ -1,22 +1,16 @@
 (printLn "ЗАДАЧА - макросы, бесконечные списки - потоки:")
 
+-- макрос отложенных вычислений, возвращает нульарную лямбду
+-- НЕ мемоизированный delay
+(defmacro delay (expr) (lambda () expr))
+
+-- мемоизированный delay-memo
 (defn memo-proc (proc)
     (def already-run? False) (def result False)
     (lambda ()
         (cond (already-run?) result
               (begin (set! result (proc)) (set! already-run? True) result))))
-
---(defmacro memo-proc (proc)
-    (def already-run? False) (def result False)
-    (lambda ()
-        (cond (already-run?) result
-              (begin (set! result (proc)) (set! already-run? True) result))))
-
--- макрос отложенных вычислений, возвращает нульарную лямбду
--- НЕ мемоизированный delay
-(defmacro delay (expr) (lambda () expr))
--- мемоизированный delay
---(defmacro delay (expr) (memo-proc (lambda () expr)))
+(defmacro delay-memo (expr) (memo-proc (lambda () expr)))
 
 -- функция их возобновления, удачное сочетание скобок:
 -- если передадим нульарную лямбду - вычислит ее,
@@ -28,13 +22,11 @@
 (print "запомнили отложенное вычисление: ") (printLn a)
 (print "вычислили результат: ") (printLn (force a))
 
--- макрос-конструктор потока, чтобы delay каждый раз не писать
-(defmacro s-cons (x y) (cons x (delay y)))
+-- макрос-конструктор потока, чтобы delay-memo каждый раз не писать
+(defmacro s-cons (x y) (cons x (delay-memo y)))
 -- функция берет хвост потока - если функция, то вычисляет ее,
 -- воспринимая, как порождающую поток. Плохо, функции в поток не засунешь.
-(defn s-tail (stream)
-    (def h (car (cdr stream)))
-    (cond (atom? h) (cdr stream) (force h)))
+(defn s-tail (stream) (def t (cdr stream) e (car t)) (cond (func? e) (force e) t))
 
 -- поток натуральных чисел, начиная с заданного
 (defn int-from (n) (s-cons n (int-from (+ n 1))))
@@ -68,12 +60,12 @@
 (printLn "первые 25 членов потока ряда Фибоначчи:")
 (printLn (s-take 25 fibs))
 
--- экспоненциальный расчет
+-- мемоизированный экспоненциальный расчет
 -- первый конс обычный, второй - потоковый отложенный, через макрос
-(defn fibsexp () (cons 0 (s-cons 1 (s-sum (s-tail (fibsexp)) (fibsexp)))))
+(def fibsexp (cons 0 (s-cons 1 (s-sum (s-tail fibsexp) fibsexp))))
 (printLn "")
-(printLn "первые 10 членов потока ряда Фибоначчи:")
-(printLn (s-take 10 (fibsexp)))
+(printLn "первые 25 членов потока ряда Фибоначчи:")
+(printLn (s-take 25 fibsexp))
 
 -- поток четных чисел
 (def evens (s-filter (lambda (x) (= 0 (mod x 2))) (int-from 0)))
@@ -120,29 +112,29 @@
           (> (car s1) (car s2)) (s-cons (car s2) (merge s1 (s-tail s2)))
                                 (s-cons (car s1) (merge (s-tail s1) (s-tail s2)))))
 (defn s-scale (k s) (s-map (lambda (x) (* k x)) s))
-(defn hamm () (s-cons 1 (merge (s-scale 2 (hamm))
-    (merge (s-scale 3 (hamm)) (s-scale 5 (hamm))) )))
+(def hamm (s-cons 1 (merge (s-scale 2 hamm) (merge (s-scale 3 hamm) (s-scale 5 hamm)) )))
 (printLn "")
 (printLn "числа Хэмминга:")
-(printLn (s-take 30 (hamm)))
+(printLn (s-take 30 hamm))
 
 -- интегрирование потоков - степенных рядов
+-- экспонента
 (defn s-integrate (s)
     (defn go (n s) (s-cons (/' (car s) n) (go (+ n 1) (s-tail s))))
     (go 1 s))
-(defn s-exp () (s-cons 1 (s-integrate (s-exp))))
+(def s-exp (s-cons 1 (s-integrate s-exp)))
 (printLn "")
 (printLn "ряд частичных сумм экспоненты от 1:")
-(printLn (s-take 8 (partial-sums +' (s-exp))))
+(printLn (s-take 8 (partial-sums +' s-exp)))
 
---(defn s-cos ()
-    (def -s-sin (s-scale -1 (s-sin)))
-    (s-cons 1 (s-integrate -s-sin)))
---(defn s-sin () (s-cons 0 (s-integrate (s-cos))))
---(printLn "ряд синуса 1:")
---(printLn (s-take 10 (partial-sums +' (s-sin))))
---(printLn "ряд косинуса 1:")
---(printLn (s-take 10 (partial-sums +' (s-cos))))
+-- синус-косинус
+(defn s-scale' (k s) (s-map (lambda (x) (*' k x)) s))
+(def s-cos (s-cons 1 (s-integrate (s-scale' -1 s-sin))))
+(def s-sin (s-cons 0 (s-integrate s-cos)))
+(printLn "") (printLn "ряд синуса 1:")
+(printLn (s-take 10 (partial-sums +' s-sin)))
+(printLn "") (printLn "ряд косинуса 1:")
+(printLn (s-take 10 (partial-sums +' s-cos)))
 
 -- поток приближений квадратного корня
 (defn average (x y) (/' (+' x y) 2))
@@ -158,7 +150,6 @@
 (defn pi-summands (n)
     (defn r () (s-map (lambda (x) (-' 0 x)) (pi-summands (+ n 2))))
     (s-cons (/' 1 n) (r)))
-(defn s-scale' (k s) (s-map (lambda (x) (*' k x)) s))
 (def pi-stream (s-scale' 4 (partial-sums +' (pi-summands 1))))
 (printLn "")
 (printLn "ряд приближений к числу пи:")
@@ -183,15 +174,15 @@
 (defn accelerated-sequence (s) (s-map car (make-tableau euler-transform s)))
 (printLn "")
 (printLn "ряд приближений к числу пи - последовательное применение Эйлера:")
-(printLn (s-take 4 (accelerated-sequence pi-stream)))
+(printLn (s-take 6 (accelerated-sequence pi-stream)))
 
---(defn integral (delayed-integrand initial-value dt)
-    (defn int () (s-cons initial-value
-        (s-zipwith +' (s-scale' dt (force delayed-integrand)) (int))))
-    (int))
---(defn solve (f y0 dt)
-    (defn y  () (integral (delay (dy)) y0 dt))
-    (defn dy () (s-map f (y)))
-    (y))
---(printLn (stream-ref 10 (solve (lambda (y) y) 1 0.01)))
+(defn integral (delayed-integrand initial-value dt)
+    (def int (s-cons initial-value
+        (s-zipwith +' (s-scale' dt (force delayed-integrand)) int)))
+    int)
+(defn solve (f y0 dt)
+    (def y  (integral (delay-memo dy) y0 dt))
+    (def dy (s-map f y))
+    y)
 (printLn "")
+(printLn (stream-ref 10 (solve (lambda (y) y) 1 0.01)))
